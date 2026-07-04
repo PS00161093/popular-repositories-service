@@ -10,10 +10,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -75,18 +76,19 @@ public class GitHubClient {
                 .header(HttpHeaders.ACCEPT, "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
                 .retrieve()
-                .onStatus(status -> status.value() == HttpStatus.FORBIDDEN.value(), (req, res) -> {
-                    StreamUtils.drain(res.getBody());
-                    String remaining = res.getHeaders().getFirst("X-RateLimit-Remaining");
-                    if ("0".equals(remaining)) {
-                        throw new RateLimitExceededException();
-                    }
-                    throw new GitHubApiException("GitHub API forbidden: " + res.getStatusCode());
-                })
+                .onStatus(status -> status.value() == HttpStatus.FORBIDDEN.value(), (req, res) -> handleForbidden(res))
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    StreamUtils.drain(res.getBody());
                     throw new GitHubApiException("GitHub API error: " + res.getStatusCode());
                 })
                 .body(GitHubSearchResponse.class);
+    }
+
+    // GitHub returns 403 (not 429) for rate limit exhaustion; X-RateLimit-Remaining: 0 distinguishes it from a real permission error
+    private void handleForbidden(ClientHttpResponse res) throws IOException {
+        String remaining = res.getHeaders().getFirst("X-RateLimit-Remaining");
+        if ("0".equals(remaining)) {
+            throw new RateLimitExceededException();
+        }
+        throw new GitHubApiException("GitHub API forbidden: " + res.getStatusCode());
     }
 }
