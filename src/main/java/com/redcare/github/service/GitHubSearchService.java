@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Provides GitHub repository search with Caffeine-backed caching.
@@ -29,9 +30,7 @@ public class GitHubSearchService {
 
     public GitHubSearchService(GitHubClient gitHubClient, CacheManager cacheManager) {
         this.gitHubClient = gitHubClient;
-        this.repositoryCache = Objects.requireNonNull(
-                cacheManager.getCache(CACHE_NAME),
-                "Cache '" + CACHE_NAME + "' not found. Verify spring.cache.cache-names configuration.");
+        this.repositoryCache = cacheManager.getCache(CACHE_NAME);
     }
 
     /**
@@ -42,13 +41,9 @@ public class GitHubSearchService {
      * @return list of matching repositories, never null
      */
     public List<GitHubRepository> search(SearchCriteria criteria) {
-        Cache.ValueWrapper wrapper = repositoryCache.get(criteria);
-        if (wrapper != null) {
-            @SuppressWarnings("unchecked")
-            List<GitHubRepository> cached = (List<GitHubRepository>) wrapper.get();
-            return cached;
-        }
-        return fetchAndCache(criteria);
+        return Optional.ofNullable(repositoryCache.get(criteria))
+                .map(wrapper -> ((CachedRepositories) wrapper.get()).repositories())
+                .orElseGet(() -> fetchAndCache(criteria));
     }
 
     private List<GitHubRepository> fetchAndCache(SearchCriteria criteria) {
@@ -64,7 +59,9 @@ public class GitHubSearchService {
             log.warn("GitHub returned incomplete results for criteria={} - skipping cache, {} repositories returned", criteria, result.repositories().size());
         } else {
             log.debug("Caching {} repositories for criteria={}", result.repositories().size(), criteria);
-            repositoryCache.put(criteria, result.repositories());
+            repositoryCache.put(criteria, new CachedRepositories(result.repositories()));
         }
     }
+
+    private record CachedRepositories(List<GitHubRepository> repositories) {}
 }
