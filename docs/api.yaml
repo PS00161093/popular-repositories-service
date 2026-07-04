@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: GitHub Repository Scorer API
+  description: Searches GitHub repositories by language and creation date, scores them by a weighted popularity formula, and returns them ranked.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /api/v1/repositories/popular:
+    get:
+      summary: Get popular repositories
+      description: Returns the top 100 GitHub repositories for the given language, created after the specified date, ranked by popularity score descending.
+      operationId: getPopularRepositories
+      parameters:
+        - name: language
+          in: query
+          required: true
+          description: Programming language to filter by (case-insensitive)
+          schema:
+            type: string
+            example: java
+        - name: createdAfter
+          in: query
+          required: true
+          description: Only include repositories created after this date (ISO 8601, exclusive, must not be in the future)
+          schema:
+            type: string
+            format: date
+            example: "2020-01-01"
+      responses:
+        "200":
+          description: |
+            Ranked list of popular repositories.
+            Returns an empty array if the language is unknown or no repositories match the query - GitHub does not return an error for unrecognised languages.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RepositoryResponse"
+              examples:
+                results-found:
+                  summary: Repositories found
+                  value:
+                    - id: 561730219
+                      name: hello-algo
+                      full_name: krahets/hello-algo
+                      html_url: https://github.com/krahets/hello-algo
+                      stars: 128141
+                      forks: 15260
+                      pushed_at: "2026-04-18T18:23:33Z"
+                      popularity_score: 7.512
+                      rank: 1
+                    - id: 594155488
+                      name: Stirling-PDF
+                      full_name: Stirling-Tools/Stirling-PDF
+                      html_url: https://github.com/Stirling-Tools/Stirling-PDF
+                      stars: 86049
+                      forks: 7525
+                      pushed_at: "2026-07-04T15:41:19Z"
+                      popularity_score: 7.231
+                      rank: 2
+                results-with-scores:
+                  summary: Repositories with popularity scores and ranks
+                  value:
+                    - id: 561730219
+                      name: hello-algo
+                      full_name: krahets/hello-algo
+                      html_url: https://github.com/krahets/hello-algo
+                      stars: 128141
+                      forks: 15260
+                      pushed_at: "2026-04-18T18:23:33Z"
+                      popularity_score: 7.512
+                      rank: 1
+                    - id: 594155488
+                      name: Stirling-PDF
+                      full_name: Stirling-Tools/Stirling-PDF
+                      html_url: https://github.com/Stirling-Tools/Stirling-PDF
+                      stars: 86049
+                      forks: 7525
+                      pushed_at: "2026-07-04T15:41:19Z"
+                      popularity_score: 7.231
+                      rank: 2
+                unknown-language:
+                  summary: Unknown language - empty result
+                  value: []
+
+        "400":
+          description: Invalid request parameters
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                invalid-date-format:
+                  summary: Invalid date format
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "Failed to convert 'createdAfter' with value: '2020-01-0'"
+                    instance: /api/v1/repositories/popular
+                missing-language:
+                  summary: Missing language parameter
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "Required parameter 'language' is not present."
+                    instance: /api/v1/repositories/popular
+                missing-created-after:
+                  summary: Missing createdAfter parameter
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "Required parameter 'createdAfter' is not present."
+                    instance: /api/v1/repositories/popular
+                blank-language:
+                  summary: Blank language value
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "language: must not be blank"
+                    instance: /api/v1/repositories/popular
+                future-date:
+                  summary: createdAfter is in the future
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "createdAfter: must be a date in the past or in the present"
+                    instance: /api/v1/repositories/popular
+
+        "429":
+          description: GitHub API rate limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: about:blank
+                title: Too Many Requests
+                status: 429
+                detail: You are rate limited. Please try after some time.
+                instance: /api/v1/repositories/popular
+
+        "503":
+          description: GitHub API unavailable or circuit breaker open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              examples:
+                github-unavailable:
+                  summary: GitHub API error
+                  value:
+                    type: about:blank
+                    title: Service Unavailable
+                    status: 503
+                    detail: Unable to get popular repositories. Please try after some time.
+                    instance: /api/v1/repositories/popular
+                circuit-breaker-open:
+                  summary: Circuit breaker open - too many recent failures
+                  value:
+                    type: about:blank
+                    title: Service Unavailable
+                    status: 503
+                    detail: Unable to get popular repositories. Please try after some time.
+                    instance: /api/v1/repositories/popular
+
+components:
+  schemas:
+    RepositoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: GitHub repository ID
+          example: 561730219
+        name:
+          type: string
+          description: Repository name
+          example: hello-algo
+        full_name:
+          type: string
+          description: Full repository name including owner
+          example: krahets/hello-algo
+        html_url:
+          type: string
+          format: uri
+          description: URL to the repository on GitHub
+          example: https://github.com/krahets/hello-algo
+        stars:
+          type: integer
+          description: Number of stars
+          example: 128141
+        forks:
+          type: integer
+          description: Number of forks
+          example: 15260
+        pushed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the last push. Null for repositories that have never had a push event.
+          example: "2026-04-18T18:23:33Z"
+        popularity_score:
+          type: number
+          format: double
+          description: Weighted popularity score (60% stars, 30% forks, 10% recency via log10 dampening)
+          example: 7.512
+        rank:
+          type: integer
+          description: 1-based rank by popularity score descending
+          example: 1
+
+    ProblemDetail:
+      type: object
+      description: RFC 7807 Problem Details
+      properties:
+        type:
+          type: string
+          example: about:blank
+        title:
+          type: string
+          example: Bad Request
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: Invalid request parameters
+        instance:
+          type: string
+          example: /api/v1/repositories/popular
