@@ -20,7 +20,7 @@ public record RepositoryResponse(
         return new RepositoryResponse(
                 repository.id(), repository.name(), repository.fullName(), repository.htmlUrl(),
                 repository.stars(), repository.forks(), repository.pushedAt(),
-                repository.popularityScore(), repository.rank()
+                Math.round(repository.popularityScore() * 100.0) / 100.0, repository.rank()
         );
     }
 }
